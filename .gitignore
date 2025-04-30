@@ -1,4 +1,5 @@
 .pytest_cache
 .history
 __pycache__
-venv
+/venv
+.env
