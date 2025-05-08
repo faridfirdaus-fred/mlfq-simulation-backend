@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List
+from pydantic import BaseModel, validator
+from typing import List, Optional
 from mlfq import simulate_mlfq
 from fastapi.responses import HTMLResponse
 from fastapi import HTTPException
@@ -25,24 +25,30 @@ class Process(BaseModel):
     pid: str
     arrival_time: int
     burst_time: int
+    io_burst: int = 0
+    total_time: Optional[int] = None
+    io_variance: float = 0.0
+    cpu_variance: float = 0.0
 
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate_positive_values
-
-    @staticmethod
-    def validate_positive_values(process):
-        if process["arrival_time"] < 0 or process["burst_time"] < 0:
-            raise ValueError("arrival_time and burst_time must be non-negative")
-        return process
+    @validator('arrival_time', 'burst_time', 'io_burst')
+    def validate_positive_values(cls, v, values, **kwargs):
+        if v < 0:
+            raise ValueError("Time values must be non-negative")
+        return v
+    
+    @validator('io_variance', 'cpu_variance')
+    def validate_variance_range(cls, v, values, **kwargs):
+        if not 0 <= v <= 1:
+            raise ValueError("Variance values must be between 0.0 and 1.0")
+        return v
     
 @app.post("/simulate")
 def simulate(processes: List[Process]):
     try:
         data = [p.dict() for p in processes]
         result = simulate_mlfq(data)
-        return {"result": result}
+        return {"processes": result, "total_time": max(p.get("finish", 0) for p in result)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        raise HTTPException(status_code=500, detail=str(e))
