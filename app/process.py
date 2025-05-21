@@ -45,8 +45,16 @@ class Process:
         # Untuk output, merepresentasikan io_time asli
         self.io_time_output: int = io_time 
 
+        # --- PERUBAHAN DIMULAI DI SINI ---
+        # Atribut baru untuk melacak kapan proses terakhir kali masuk ke state READY
+        self.time_entered_ready_state: Optional[int] = None 
+        # --- PERUBAHAN SELESAI DI SINI ---
+
     def to_dict(self) -> dict:
         """Konversi objek proses ke dictionary untuk output JSON."""
+        # Konversi execution_history ke format yang diharapkan frontend
+        execution_log = [{"start_time": start, "end_time": end} for start, end in self.execution_history]
+        
         return {
             "pid": self.pid,
             "arrival_time": self.arrival_time,
@@ -61,8 +69,9 @@ class Process:
             "turnaround_time": self.turnaround_time,
             "remaining_time": self.remaining_time,
             "context_switches": self.context_switches,
-            "execution_history": self.execution_history,
+            "execution_log": execution_log,  # Ganti execution_history dengan execution_log
             "queue_history": self.queue_history,
             "io_bursts_completed": self.io_bursts_completed,
-            "cpu_bursts_completed": self.cpu_bursts_completed
+            "cpu_bursts_completed": self.cpu_bursts_completed,
+            "first_execution_time": self.start_time,  # Gunakan start_time sebagai first_execution_time
         }
