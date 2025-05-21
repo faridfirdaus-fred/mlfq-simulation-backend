@@ -11,13 +11,14 @@ from .mlfq_scheduler import MLFQSimulator
 from typing import List, Optional
 from pydantic import BaseModel
 
+# Inisialisasi aplikasi FastAPI dengan metadata
 app = FastAPI(
     title="MLFQ Simulation API",
     description="API for simulating Multi-Level Feedback Queue scheduling algorithm",
     version="1.0.0"
 )
 
-# Configure CORS
+# Konfigurasi CORS agar API bisa diakses dari frontend manapun
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,6 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Model input untuk proses yang akan disimulasikan
 class ProcessInput(BaseModel):
     """Input model for process creation"""
     pid: str
@@ -34,6 +36,7 @@ class ProcessInput(BaseModel):
     priority: Optional[int] = 0
     io_time: Optional[int] = 0
 
+# Model konfigurasi simulasi MLFQ
 class SimulationConfig(BaseModel):
     """Configuration for MLFQ simulation"""
     num_queues: Optional[int] = 3
@@ -41,11 +44,13 @@ class SimulationConfig(BaseModel):
     boost_interval: Optional[int] = 100
     aging_threshold: Optional[int] = 5
 
+# Model request utama untuk endpoint simulasi
 class SimulationRequest(BaseModel):
     """Request model for simulation"""
     processes: List[ProcessInput]
     config: Optional[SimulationConfig] = SimulationConfig()
 
+# Endpoint root: menampilkan halaman HTML sederhana dokumentasi API
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     return """
@@ -113,18 +118,21 @@ async def read_root():
     </html>
     """
 
+# Endpoint utama untuk menjalankan simulasi MLFQ
 @app.post("/simulate")
 async def simulate_mlfq(request: SimulationRequest):
     """
     Run MLFQ simulation with given processes and configuration
     """
     try:
+        # Validasi: proses tidak boleh kosong
         if not request.processes:
             return JSONResponse(
                 status_code=400,
                 content={"detail": "Process list cannot be empty"}
             )
         
+        # Validasi: PID harus unik
         pids = [p.pid for p in request.processes]
         if len(pids) != len(set(pids)):
             return JSONResponse(
@@ -132,9 +140,7 @@ async def simulate_mlfq(request: SimulationRequest):
                 content={"detail": "Process IDs must be unique"}
             )
         
-        # CRITICAL FIX: Pass the raw ProcessInput objects to MLFQSimulator.
-        # The MLFQSimulator.__init__ will handle creating fresh Process objects internally.
-        # This ensures a clean state for each simulation run.
+        # Membuat simulator MLFQ dengan data proses dan konfigurasi
         simulator = MLFQSimulator(
             processes=request.processes, # Pass ProcessInput directly
             num_queues=request.config.num_queues,
@@ -143,19 +149,24 @@ async def simulate_mlfq(request: SimulationRequest):
             aging_threshold=request.config.aging_threshold
         )
         
+        # Jalankan simulasi
         simulator.simulate()
         results = simulator.get_results()
         
+        # Kembalikan hasil simulasi
         return {
             "results": results,
             "total_time": simulator.current_time
         }
         
     except ValueError as ve:
+        # Tangani error validasi
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
+        # Tangani error internal
         raise HTTPException(status_code=500, detail=f"Internal simulation error: {str(e)}")
 
+# Endpoint health check
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -167,6 +178,7 @@ async def health_check():
         }
     )
 
+# Endpoint info: informasi tentang algoritma MLFQ dan fitur API
 @app.get("/info")
 async def get_algorithm_info():
     """Get information about the MLFQ algorithm implementation"""
@@ -213,6 +225,7 @@ async def get_algorithm_info():
         }
     )
 
+# Menjalankan server jika file ini dieksekusi langsung
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
