@@ -37,3 +37,8 @@ env/
 # Project specific
 output/
 *.log
+# Try these variations
+/venv/
+venv/
+*venv/
+*/venv/

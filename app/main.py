@@ -1,3 +1,4 @@
+# main.py
 """
 FastAPI backend for MLFQ simulation.
 """
@@ -5,7 +6,7 @@ FastAPI backend for MLFQ simulation.
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
-from .process import Process
+from .process import Process # Pastikan impor Process dan ProcessState dari process.py
 from .mlfq_scheduler import MLFQSimulator
 from typing import List, Optional
 from pydantic import BaseModel
@@ -116,22 +117,14 @@ async def read_root():
 async def simulate_mlfq(request: SimulationRequest):
     """
     Run MLFQ simulation with given processes and configuration
-    
-    Args:
-        request: Simulation request containing processes and configuration
-        
-    Returns:
-        Simulation results including process metrics and execution history
     """
     try:
-        # Validate input
         if not request.processes:
             return JSONResponse(
                 status_code=400,
                 content={"detail": "Process list cannot be empty"}
             )
         
-        # Check for duplicate PIDs
         pids = [p.pid for p in request.processes]
         if len(pids) != len(set(pids)):
             return JSONResponse(
@@ -139,21 +132,11 @@ async def simulate_mlfq(request: SimulationRequest):
                 content={"detail": "Process IDs must be unique"}
             )
         
-        # Convert input processes to Process objects
-        processes = [
-            Process(
-                pid=p.pid,
-                arrival_time=p.arrival_time,
-                burst_time=p.burst_time,
-                priority=p.priority,
-                io_time=p.io_time
-            )
-            for p in request.processes
-        ]
-        
-        # Create and run simulator
+        # CRITICAL FIX: Pass the raw ProcessInput objects to MLFQSimulator.
+        # The MLFQSimulator.__init__ will handle creating fresh Process objects internally.
+        # This ensures a clean state for each simulation run.
         simulator = MLFQSimulator(
-            processes=processes,
+            processes=request.processes, # Pass ProcessInput directly
             num_queues=request.config.num_queues,
             time_slice=request.config.time_slice,
             boost_interval=request.config.boost_interval,
@@ -163,18 +146,15 @@ async def simulate_mlfq(request: SimulationRequest):
         simulator.simulate()
         results = simulator.get_results()
         
-        return JSONResponse(
-            content={
-                "results": results,
-                "total_time": simulator.current_time
-            }
-        )
+        return {
+            "results": results,
+            "total_time": simulator.current_time
+        }
         
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        return JSONResponse(
-            status_code=400,
-            content={"detail": str(e)}
-        )
+        raise HTTPException(status_code=500, detail=f"Internal simulation error: {str(e)}")
 
 @app.get("/health")
 async def health_check():
@@ -190,38 +170,45 @@ async def health_check():
 @app.get("/info")
 async def get_algorithm_info():
     """Get information about the MLFQ algorithm implementation"""
+    default_config = SimulationConfig()
+    time_quantums_example = [
+        default_config.time_slice * (i + 1) for i in range(default_config.num_queues)
+    ]
     return JSONResponse(
         content={
             "algorithm": "Multi-Level Feedback Queue (MLFQ)",
-            "queues": 3,
-            "time_quantum": [2, 4, 6],
-            "aging_threshold": 5,
+            "queues_default": default_config.num_queues,
+            "time_quantum_progression": "Linear: base_time_slice * (queue_level + 1)",
+            "default_time_quantums_example": time_quantums_example,
+            "aging_threshold_default": default_config.aging_threshold,
+            "boost_interval_default": default_config.boost_interval,
             "features": [
-                "Three priority levels",
-                "Round-robin scheduling within each level",
-                "Aging mechanism to prevent starvation",
-                "I/O burst handling",
-                "Process preemption",
-                "Dynamic priority adjustment",
-                "Priority boost at regular intervals",
-                "Linear time quantum progression"
+                "Multiple priority queues",
+                "Round-robin scheduling within each queue (FIFO for lowest)",
+                "Processes demote to lower priority queues after exhausting time slice",
+                "Processes return to highest priority queue after I/O completion",
+                "Aging mechanism to prevent starvation by promoting long-waiting processes",
+                "Priority boost at regular intervals to move all processes to top queue",
+                "Dynamic time quantum (linearly increasing for lower queues)",
+                "Context switching tracking",
+                "CPU and I/O burst handling"
             ],
             "metrics_calculated": [
-                "Response time",
-                "Turnaround time", 
-                "Waiting time",
-                "CPU utilization",
-                "I/O utilization",
-                "Context switches",
-                "Queue distribution",
-                "Process completion time"
+                "Response Time",
+                "Turnaround Time", 
+                "Waiting Time",
+                "CPU Utilization",
+                "Total Simulation Time",
+                "Context Switches (per process)",
+                "CPU Bursts Completed (per process)",
+                "I/O Bursts Completed (per process)"
             ],
             "process_states": [
-                "NEW",
-                "READY",
-                "RUNNING",
-                "BLOCKED",
-                "FINISHED"
+                "NEW (baru tiba)",
+                "READY (menunggu CPU di antrean)",
+                "RUNNING (sedang dieksekusi CPU)",
+                "BLOCKED (menunggu I/O)",
+                "FINISHED (selesai total)"
             ]
         }
     )
