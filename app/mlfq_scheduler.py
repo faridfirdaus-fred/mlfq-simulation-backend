@@ -1,13 +1,13 @@
 from typing import List, Dict, Optional, Set
 from collections import deque
-from .process import Process, ProcessState # Pastikan Process diimpor dari file process.py Anda
+from .process import Process, ProcessState
 
 class MLFQSimulator:
     """Multi-Level Feedback Queue Scheduler implementation with extended metrics"""
     
     def __init__(
         self,
-        processes: List[Process], # Seharusnya List[ProcessInput] atau konversi di sini
+        processes: List[Process],
         num_queues: int = 3,
         time_slice: int = 2,
         boost_interval: int = 100,
@@ -16,13 +16,13 @@ class MLFQSimulator:
     ):
         # Create copies of processes with reset simulation attributes
         self.processes: List[Process] = []
-        for p_input in processes: # Asumsi p_input adalah objek dengan atribut yang diperlukan Process
+        for p_input in processes:
             new_p = Process(
                 pid=p_input.pid,
                 arrival_time=p_input.arrival_time,
                 burst_time=p_input.burst_time,
-                priority=p_input.priority if hasattr(p_input, 'priority') else 0,
-                io_time=p_input.io_time if hasattr(p_input, 'io_time') else 0
+                priority=p_input.priority,
+                io_time=p_input.io_time
             )
             # Reset simulation attributes
             new_p.state = ProcessState.NEW
@@ -110,7 +110,7 @@ class MLFQSimulator:
             for process in aged_processes:
                 if process in self.queues[queue_idx]:
                     self.queues[queue_idx].remove(process)
-                    self._add_to_queue(process, queue_idx - 1) # Promosi ke antrian lebih tinggi
+                    self._add_to_queue(process, queue_idx - 1)
                     self._debug_log(f"Process {process.pid} aged, moved from queue {queue_idx} to {queue_idx - 1}")
 
     def _handle_priority_boost(self) -> None:
@@ -155,6 +155,8 @@ class MLFQSimulator:
         
         for pid, process in list(self.io_processes.items()):
             process.remaining_io_time -= 1
+            self._debug_log(f"Process {process.pid} I/O progress: {process.remaining_io_time} remaining after decrement")
+            
             if process.remaining_io_time <= 0:
                 completed_io.append(pid)
                 process.io_bursts_completed += 1
@@ -185,6 +187,7 @@ class MLFQSimulator:
         
         while iterations < max_iterations:
             iterations += 1
+            
             self._debug_log(f"\n[Time {self.current_time}] --- Iteration {iterations} ---")
             self._debug_log(f"Queue states: {[len(q) for q in self.queues]}, "
                           f"I/O processes: {len(self.io_processes)}, "
@@ -263,9 +266,9 @@ class MLFQSimulator:
             # 7. Execute current process
             if self.current_process:
                 time_quantum = self._get_time_quantum(self.current_process.queue)
-                execution_start_time_slice = self.current_time # Waktu mulai slice ini
+                execution_start = self.current_time
                 
-                run_duration_this_slice = min(time_quantum, self.current_process.remaining_time)
+                execution_duration = min(time_quantum, self.current_process.remaining_time)
                 
                 if execution_duration > 0:
                     # Update time and process state
@@ -291,7 +294,6 @@ class MLFQSimulator:
                         # Check if process needs I/O
                         if self.current_process.original_io_time > 0 and self.current_process.io_bursts_completed == 0:
                             self.current_process.state = ProcessState.BLOCKED
-                            self.current_process.remaining_io_time = self.current_process.original_io_time # Set ulang durasi I/O
                             self.io_processes[self.current_process.pid] = self.current_process
                             self._debug_log(f"Process {self.current_process.pid} moved to blocked state for I/O "
                                           f"after CPU burst {self.current_process.cpu_bursts_completed}")
