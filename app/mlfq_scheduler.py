@@ -77,6 +77,7 @@ class MLFQSimulator:
         
         process.queue = queue_level
         process.state = ProcessState.READY
+        process.time_entered_ready_state = self.current_time
         self.queues[queue_level].append(process)
         self.aging_counters[process.pid] = 0  # Reset aging counter
 
@@ -119,20 +120,24 @@ class MLFQSimulator:
             
             # Boost current process if not in top queue
             if self.current_process and self.current_process.queue > 0:
-                self._debug_log(f"Current process {self.current_process.pid} preempted by boost, moved to queue 0.")
+                self._debug_log(f"Current process {self.current_process.pid} preempted by boost, will be moved to queue 0.")
+                # Kembalikan ke antrian asalnya dulu agar _add_to_queue bisa set time_entered_ready_state
+                original_queue = self.current_process.queue
                 self.current_process.state = ProcessState.READY
-                self._add_to_queue(self.current_process, 0)
-                self.current_process = None
-            
-            # Move all processes from lower queues to top queue
-            for queue_idx in range(1, self.num_queues):
-                while self.queues[queue_idx]:
-                    process = self.queues[queue_idx].popleft()
-                    self._add_to_queue(process, 0)
-                    self._debug_log(f"Process {process.pid} boosted to queue 0.")
-            
-            # Reset all aging counters after boost
-            self.aging_counters.clear()
+                # _add_to_queue akan dipanggil nanti untuk semua proses termasuk ini
+                # Untuk sementara, kita tambahkan ke depan antrian asalnya
+                self.queues[original_queue].appendleft(self.current_process)
+                self.current_process = None 
+                
+                # Move all processes from lower queues to top queue
+                for queue_idx in range(1, self.num_queues):
+                    while self.queues[queue_idx]:
+                        process = self.queues[queue_idx].popleft()
+                        self._add_to_queue(process, 0)
+                        self._debug_log(f"Process {process.pid} boosted to queue 0.")
+                
+                # Reset all aging counters after boost
+                self.aging_counters.clear()
 
     def _update_waiting_times(self) -> None:
         """Update traditional waiting times for processes in READY state"""
