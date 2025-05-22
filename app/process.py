@@ -13,65 +13,95 @@ class ProcessState(Enum):
 # Kelas utama untuk merepresentasikan sebuah proses
 class Process:
     def __init__(self, pid: str, arrival_time: int, burst_time: int, priority: int = 0, io_time: int = 0):
-        # ID unik proses
+        # Basic attributes
         self.pid = pid
-        # Waktu kedatangan proses
         self.arrival_time = arrival_time
-        # Total waktu CPU yang dibutuhkan proses
         self.burst_time = burst_time
-        # Prioritas proses (default 0)
         self.priority = priority
+        self.io_time = io_time
+        self.original_io_time = io_time
+        self.remaining_io_time = io_time
+
+        # Runtime attributes
+        self.state = ProcessState.NEW
+        # QueueLevel = nilai prioritas awal proses (sesuai permintaan)
+        self.queue = priority  
+        self.remaining_time = burst_time
         
-        # Waktu I/O asli untuk burst I/O proses
-        self.io_time = io_time 
-        self.original_io_time = io_time 
-        # Sisa waktu untuk burst I/O saat ini
-        self.remaining_io_time = io_time 
+        # Performance metrics
+        self.start_time = None
+        self.finish_time = None
+        # Untuk perhitungan waiting time tradisional (waktu total di status READY)
+        self.traditional_waiting_time = 0
+        # Untuk model baru: WaitingTime = StartTime - ArrivalTime
+        self.waiting_time = 0
+        self.turnaround_time = 0
+        self.context_switches = 0
+        self.response_time = 0
+        self.cpu_usage_time = 0
+        
+        # Tracking histories
+        self.execution_history: List[Tuple[int, int]] = []
+        self.queue_history: List[Tuple[int, int]] = []
+        self.io_bursts_completed = 0
+        self.cpu_bursts_completed = 0
+        
+        # Efficiency metrics
+        self.cpu_efficiency = 0.0
+        self.io_efficiency = 0.0
+        self.waiting_ratio = 0.0
+        
+        # Untuk output
+        self.io_time_output = io_time
+    
+    def calculate_derived_metrics(self):
+        """Calculate derived metrics after simulation is complete"""
+        if self.finish_time is not None:
+            # Basic time metrics
+            self.turnaround_time = self.finish_time - self.arrival_time
+            
+            if self.start_time is not None:
+                # Wait time based on new model: StartTime - ArrivalTime
+                self.waiting_time = self.start_time - self.arrival_time
+                # Response time same as waiting time in this model
+                self.response_time = self.waiting_time
 
-        # Atribut khusus simulator, akan diinisialisasi ulang oleh MLFQSimulator
-        self.state: ProcessState = ProcessState.NEW  # Status proses saat ini
-        self.queue: int = -1  # Indeks queue MLFQ tempat proses berada
-        self.start_time: Optional[int] = None  # Waktu mulai eksekusi pertama kali
-        self.finish_time: Optional[int] = None  # Waktu proses selesai
-        self.waiting_time: int = 0  # Total waktu menunggu di ready queue
-        self.turnaround_time: int = 0  # Total waktu dari datang hingga selesai
-        self.remaining_time: int = burst_time  # Sisa waktu CPU yang dibutuhkan
-        self.context_switches: int = 0  # Jumlah context switch yang dialami proses
-        self.execution_history: List[Tuple[int, int]] = []  # Riwayat eksekusi (start, end)
-        self.queue_history: List[Tuple[int, int]] = []  # Riwayat perpindahan queue (queue, waktu)
-        self.io_bursts_completed: int = 0  # Jumlah burst I/O yang selesai
-        self.cpu_bursts_completed: int = 0  # Jumlah burst CPU yang selesai
-
-        # Untuk output, merepresentasikan io_time asli
-        self.io_time_output: int = io_time 
-
-        # --- PERUBAHAN DIMULAI DI SINI ---
-        # Atribut baru untuk melacak kapan proses terakhir kali masuk ke state READY
-        self.time_entered_ready_state: Optional[int] = None 
-        # --- PERUBAHAN SELESAI DI SINI ---
+                # Calculate CPU usage time from execution history
+                self.cpu_usage_time = sum(end - start for start, end in self.execution_history)
+                
+                # Efficiency metrics
+                if self.turnaround_time > 0:
+                    self.cpu_efficiency = self.burst_time / self.turnaround_time
+                    self.io_efficiency = self.original_io_time / self.turnaround_time
+                    self.waiting_ratio = self.waiting_time / self.turnaround_time
 
     def to_dict(self) -> dict:
-        """Konversi objek proses ke dictionary untuk output JSON."""
-        # Konversi execution_history ke format yang diharapkan frontend
-        execution_log = [{"start_time": start, "end_time": end} for start, end in self.execution_history]
+        """Convert process object to dictionary for output"""
+        # Calculate derived metrics before outputting
+        self.calculate_derived_metrics()
         
         return {
             "pid": self.pid,
             "arrival_time": self.arrival_time,
             "burst_time": self.burst_time,
             "priority": self.priority,
-            "io_time": self.io_time_output, # Gunakan ini untuk output
+            "io_time": self.io_time_output,
             "state": self.state.value,
             "queue": self.queue,
             "start_time": self.start_time,
             "finish_time": self.finish_time,
-            "waiting_time": self.waiting_time,
+            "waiting_time": self.waiting_time,  # Using new model: StartTime - ArrivalTime
+            "traditional_waiting_time": self.traditional_waiting_time,  # Old model for reference
             "turnaround_time": self.turnaround_time,
+            "response_time": self.response_time,
             "remaining_time": self.remaining_time,
             "context_switches": self.context_switches,
-            "execution_log": execution_log,  # Ganti execution_history dengan execution_log
+            "execution_history": self.execution_history,
             "queue_history": self.queue_history,
             "io_bursts_completed": self.io_bursts_completed,
             "cpu_bursts_completed": self.cpu_bursts_completed,
-            "first_execution_time": self.start_time,  # Gunakan start_time sebagai first_execution_time
+            "cpu_usage_time": self.cpu_usage_time,
+            "cpu_efficiency": round(self.cpu_efficiency, 2),
+            "io_efficiency": round(self.io_efficiency, 2),
+            "waiting_ratio": round(self.waiting_ratio, 2)
         }
