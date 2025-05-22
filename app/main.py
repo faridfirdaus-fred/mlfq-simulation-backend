@@ -1,4 +1,3 @@
-# main.py
 """
 FastAPI backend for MLFQ simulation.
 """
@@ -6,19 +5,19 @@ FastAPI backend for MLFQ simulation.
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
-from .process import Process # Pastikan impor Process dan ProcessState dari process.py
+from .process import Process
 from .mlfq_scheduler import MLFQSimulator
 from typing import List, Optional
 from pydantic import BaseModel
 
-# Inisialisasi aplikasi FastAPI dengan metadata
+# Initialize FastAPI app with metadata
 app = FastAPI(
     title="MLFQ Simulation API",
     description="API for simulating Multi-Level Feedback Queue scheduling algorithm",
     version="1.0.0"
 )
 
-# Konfigurasi CORS agar API bisa diakses dari frontend manapun
+# Configure CORS to allow access from any frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,30 +26,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Model input untuk proses yang akan disimulasikan
+# Input model for processes to be simulated
 class ProcessInput(BaseModel):
-    """Input model for process creation"""
     pid: str
     arrival_time: int
     burst_time: int
     priority: Optional[int] = 0
     io_time: Optional[int] = 0
 
-# Model konfigurasi simulasi MLFQ
+# Configuration model for MLFQ simulation
 class SimulationConfig(BaseModel):
-    """Configuration for MLFQ simulation"""
     num_queues: Optional[int] = 3
     time_slice: Optional[int] = 2
     boost_interval: Optional[int] = 100
     aging_threshold: Optional[int] = 5
+    debug: Optional[bool] = False
 
-# Model request utama untuk endpoint simulasi
+# Main request model for simulation endpoint
 class SimulationRequest(BaseModel):
-    """Request model for simulation"""
     processes: List[ProcessInput]
     config: Optional[SimulationConfig] = SimulationConfig()
 
-# Endpoint root: menampilkan halaman HTML sederhana dokumentasi API
+# Root endpoint: displays simple HTML documentation
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     return """
@@ -63,12 +60,16 @@ async def read_root():
                 .container { max-width: 800px; margin: 0 auto; }
                 .endpoint { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
                 code { background: #e8e8e8; padding: 2px 4px; border-radius: 3px; }
+                pre { background: #f8f8f8; padding: 15px; overflow-x: auto; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>🚀 MLFQ Simulation API</h1>
-                <p>Multi-Level Feedback Queue Scheduling Algorithm Simulation</p>
+                <h1>🚀 MLFQ Simulation API - Modified Model</h1>
+                <p>Multi-Level Feedback Queue Scheduling Algorithm with Modified Metrics</p>
                 
                 <h2>Available Endpoints:</h2>
                 <div class="endpoint">
@@ -77,26 +78,52 @@ async def read_root():
                 <div class="endpoint">
                     <strong>POST /simulate</strong> - Run MLFQ simulation
                 </div>
-                <div class="endpoint">
-                    <strong>GET /health</strong> - Health check
-                </div>
-                <div class="endpoint">
-                    <strong>GET /info</strong> - Algorithm information
-                </div>
                 
-                <h2>Quick Start:</h2>
-                <p>1. Visit <a href="/docs">/docs</a> for interactive testing</p>
-                <p>2. POST process data to <code>/simulate</code></p>
+                <h2>Modified Metrics Model:</h2>
+                <table>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Formula</th>
+                    </tr>
+                    <tr>
+                        <td>QueueLevel</td>
+                        <td>Initial value = process priority</td>
+                    </tr>
+                    <tr>
+                        <td>WaitingTime</td>
+                        <td>StartTime - ArrivalTime</td>
+                    </tr>
+                    <tr>
+                        <td>TurnaroundTime</td>
+                        <td>FinishTime - ArrivalTime</td>
+                    </tr>
+                    <tr>
+                        <td>CPUUtilization</td>
+                        <td>Σ (CPUBurstTime) / FinishTime</td>
+                    </tr>
+                    <tr>
+                        <td>CPUEfficiency</td>
+                        <td>CPUBurstTime / TurnaroundTime</td>
+                    </tr>
+                    <tr>
+                        <td>IOEfficiency</td>
+                        <td>IOTime / TurnaroundTime</td>
+                    </tr>
+                    <tr>
+                        <td>WaitingRatio</td>
+                        <td>WaitingTime / TurnaroundTime</td>
+                    </tr>
+                </table>
                 
-                <h2>Example Process Data:</h2>
+                <h2>Example Request:</h2>
                 <pre><code>{
   "processes": [
     {
       "pid": "P1",
       "arrival_time": 0,
-      "burst_time": 4,
-      "priority": 0,
-      "io_time": 0
+      "burst_time": 5,
+      "priority": 1,
+      "io_time": 2
     },
     {
       "pid": "P2",
@@ -104,13 +131,20 @@ async def read_root():
       "burst_time": 3,
       "priority": 0,
       "io_time": 0
+    },
+    {
+      "pid": "P3",
+      "arrival_time": 2,
+      "burst_time": 8,
+      "priority": 2,
+      "io_time": 3
     }
   ],
   "config": {
     "num_queues": 3,
     "time_slice": 2,
-    "boost_interval": 100,
-    "aging_threshold": 5
+    "boost_interval": 15,
+    "aging_threshold": 4
   }
 }</code></pre>
             </div>
@@ -118,21 +152,21 @@ async def read_root():
     </html>
     """
 
-# Endpoint utama untuk menjalankan simulasi MLFQ
+# Main simulation endpoint
 @app.post("/simulate")
 async def simulate_mlfq(request: SimulationRequest):
     """
-    Run MLFQ simulation with given processes and configuration
+    Run MLFQ simulation with the given processes and configuration
     """
     try:
-        # Validasi: proses tidak boleh kosong
+        # Validate: process list must not be empty
         if not request.processes:
             return JSONResponse(
                 status_code=400,
                 content={"detail": "Process list cannot be empty"}
             )
         
-        # Validasi: PID harus unik
+        # Validate: PIDs must be unique
         pids = [p.pid for p in request.processes]
         if len(pids) != len(set(pids)):
             return JSONResponse(
@@ -140,92 +174,66 @@ async def simulate_mlfq(request: SimulationRequest):
                 content={"detail": "Process IDs must be unique"}
             )
         
-        # Membuat simulator MLFQ dengan data proses dan konfigurasi
+        # Convert Pydantic models to Process objects
+        processes = []
+        for p_input in request.processes:
+            processes.append(Process(
+                pid=p_input.pid,
+                arrival_time=p_input.arrival_time,
+                burst_time=p_input.burst_time,
+                priority=p_input.priority,
+                io_time=p_input.io_time
+            ))
+        
+        # Create and run MLFQ simulator
         simulator = MLFQSimulator(
-            processes=request.processes, # Pass ProcessInput directly
+            processes=processes,
             num_queues=request.config.num_queues,
             time_slice=request.config.time_slice,
             boost_interval=request.config.boost_interval,
-            aging_threshold=request.config.aging_threshold
+            aging_threshold=request.config.aging_threshold,
+            debug=request.config.debug
         )
         
-        # Jalankan simulasi
+        # Run simulation
         simulator.simulate()
+        
+        # Get results
         results = simulator.get_results()
         
-        # Kembalikan hasil simulasi
+        # Return simulation results
         return {
             "results": results,
-            "total_time": simulator.current_time
+            "metrics_description": {
+                "QueueLevel": "Initial queue level set to process priority",
+                "WaitingTime": "StartTime - ArrivalTime",
+                "TurnaroundTime": "FinishTime - ArrivalTime",
+                "CPUUtilization": "Total CPU time / Total simulation time",
+                "Throughput": "Processes completed / Total simulation time",
+                "CPUEfficiency": "CPU burst time / Turnaround time for each process"
+            }
         }
         
     except ValueError as ve:
-        # Tangani error validasi
+        # Handle validation errors
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        # Tangani error internal
+        # Handle internal errors
         raise HTTPException(status_code=500, detail=f"Internal simulation error: {str(e)}")
 
-# Endpoint health check
+# Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return JSONResponse(
         content={
             "status": "healthy",
-            "service": "MLFQ Simulation API",
+            "service": "Modified MLFQ Simulation API",
             "version": "1.0.0"
         }
     )
 
-# Endpoint info: informasi tentang algoritma MLFQ dan fitur API
-@app.get("/info")
-async def get_algorithm_info():
-    """Get information about the MLFQ algorithm implementation"""
-    default_config = SimulationConfig()
-    time_quantums_example = [
-        default_config.time_slice * (i + 1) for i in range(default_config.num_queues)
-    ]
-    return JSONResponse(
-        content={
-            "algorithm": "Multi-Level Feedback Queue (MLFQ)",
-            "queues_default": default_config.num_queues,
-            "time_quantum_progression": "Linear: base_time_slice * (queue_level + 1)",
-            "default_time_quantums_example": time_quantums_example,
-            "aging_threshold_default": default_config.aging_threshold,
-            "boost_interval_default": default_config.boost_interval,
-            "features": [
-                "Multiple priority queues",
-                "Round-robin scheduling within each queue (FIFO for lowest)",
-                "Processes demote to lower priority queues after exhausting time slice",
-                "Processes return to highest priority queue after I/O completion",
-                "Aging mechanism to prevent starvation by promoting long-waiting processes",
-                "Priority boost at regular intervals to move all processes to top queue",
-                "Dynamic time quantum (linearly increasing for lower queues)",
-                "Context switching tracking",
-                "CPU and I/O burst handling"
-            ],
-            "metrics_calculated": [
-                "Response Time",
-                "Turnaround Time", 
-                "Waiting Time",
-                "CPU Utilization",
-                "Total Simulation Time",
-                "Context Switches (per process)",
-                "CPU Bursts Completed (per process)",
-                "I/O Bursts Completed (per process)"
-            ],
-            "process_states": [
-                "NEW (baru tiba)",
-                "READY (menunggu CPU di antrean)",
-                "RUNNING (sedang dieksekusi CPU)",
-                "BLOCKED (menunggu I/O)",
-                "FINISHED (selesai total)"
-            ]
-        }
-    )
-
-# Menjalankan server jika file ini dieksekusi langsung
+# Run the server if this file is executed directly
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
