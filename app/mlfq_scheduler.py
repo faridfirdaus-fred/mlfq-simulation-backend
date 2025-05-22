@@ -8,7 +8,7 @@ class MLFQSimulator:
     def __init__(
         self,
         processes: List[Process],
-        num_queues: int = 3,
+        num_queues: int = 4,
         time_slice: int = 2,
         boost_interval: int = 100,
         aging_threshold: int = 5,
